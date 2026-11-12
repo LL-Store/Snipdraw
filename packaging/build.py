@@ -10,12 +10,15 @@
     dist/Snipdraw.app                          macOS 应用本体
     dist/Snipdraw/                             Linux / Windows 目录
     release/Snipdraw-<版本>-macos-<arch>.dmg   macOS 安装包（拖进 Applications 即可）
+    release/Snipdraw-<版本>-windows-x64-setup.exe  Windows 安装包（当前用户安装，免管理员）
     release/Snipdraw-<版本>-<平台>.zip|tar.gz  压缩分发（Windows/Linux，以及 macOS 备选）
 """
 
 from __future__ import annotations
 
 import argparse
+import importlib.util
+import os
 import platform
 import shutil
 import subprocess
@@ -29,6 +32,106 @@ SPEC = Path(__file__).resolve().parent / "snipdraw.spec"
 BUILD_DIR = ROOT / "build" / "pyinstaller"
 DIST_DIR = ROOT / "dist"
 RELEASE_DIR = ROOT / "release"
+INSTALLER_ISS = Path(__file__).resolve().parent / "installer.iss"
+
+MIN_PYTHON = (3, 10)
+# PySide6 的 wheel 还没跟上 3.14，pyproject.toml 里限的是 <3.14
+MAX_PYTHON_EXCLUSIVE = (3, 14)
+
+
+def interpreter_problems(
+    version: tuple[int, int], has_pyinstaller: bool, has_pyside6: bool
+) -> list[str]:
+    """列出当前解释器不能打包的原因；返回空列表表示可以直接构建。"""
+    problems = []
+    if version < MIN_PYTHON:
+        problems.append(
+            f"Python 太旧：当前 {version[0]}.{version[1]}，"
+            f"打包需要 ≥{MIN_PYTHON[0]}.{MIN_PYTHON[1]}"
+        )
+    elif version >= MAX_PYTHON_EXCLUSIVE:
+        problems.append(
+            f"Python 太新：当前 {version[0]}.{version[1]}，PySide6 的 wheel 还没跟上 "
+            f"{MAX_PYTHON_EXCLUSIVE[0]}.{MAX_PYTHON_EXCLUSIVE[1]}"
+        )
+    if not has_pyinstaller:
+        problems.append("缺少 PyInstaller（在开发依赖 .[dev] 里）")
+    if not has_pyside6:
+        problems.append("缺少 PySide6（同上，装 .[dev] 即可）")
+    return problems
+
+
+def venv_interpreters(root: Path = ROOT) -> list[Path]:
+    """项目自带 venv 里可能的解释器路径（Windows 与 Unix 两种布局）。"""
+    return [
+        root / ".venv" / "Scripts" / "python.exe",
+        root / ".venv" / "bin" / "python",
+    ]
+
+
+def choose_fallback(candidates: list[Path], probe) -> Path | None:
+    """挑第一个「存在且 probe 通过」的解释器。"""
+    for candidate in candidates:
+        if not candidate.exists():
+            continue
+        if probe(candidate):
+            return candidate
+    return None
+
+
+def _same_interpreter(left: Path, right: Path) -> bool:
+    """比较两个解释器路径。不能用 `Path.resolve()`：应用商店版 Python 的
+    `sys.executable` 是应用执行别名（reparse point），resolve 会抛 WinError 1920。
+    """
+    return os.path.normcase(os.path.abspath(str(left))) == os.path.normcase(
+        os.path.abspath(str(right))
+    )
+
+
+def _can_build(path: Path) -> bool:
+    """探一下子解释器：既能 import 两个依赖，版本也在支持区间。"""
+    probe = (
+        "import sys, PyInstaller, PySide6; "
+        f"sys.exit(0 if sys.version_info[:2] >= {MIN_PYTHON!r} else 1)"
+    )
+    result = subprocess.run([str(path), "-c", probe], capture_output=True, check=False)
+    return result.returncode == 0
+
+
+def ensure_environment() -> None:
+    """解释器不适合打包时，先试着切到项目 venv，切不成就给出能照抄的命令。
+
+    起因：Windows 上 `python` 常常落到应用商店版 3.9（没有 PyInstaller / PySide6），
+    直接跑本脚本只会抛一句 CalledProcessError，看不出该修哪里。
+    """
+    problems = interpreter_problems(
+        sys.version_info[:2],
+        importlib.util.find_spec("PyInstaller") is not None,
+        importlib.util.find_spec("PySide6") is not None,
+    )
+    if not problems:
+        return
+
+    fallback = choose_fallback(venv_interpreters(), _can_build)
+    if fallback is not None and not _same_interpreter(Path(sys.executable), fallback):
+        print(f"[env] 当前解释器不能打包：{sys.executable}")
+        for problem in problems:
+            print(f"[env]   - {problem}")
+        print(f"[env] 改用项目 venv 继续：{fallback}")
+        raise SystemExit(
+            subprocess.run(
+                [str(fallback), str(Path(__file__).resolve()), *sys.argv[1:]]
+            ).returncode
+        )
+
+    print("[env] 打包环境不满足要求：", file=sys.stderr)
+    for problem in problems:
+        print(f"[env]   - {problem}", file=sys.stderr)
+    print("[env] 先准备环境，再执行构建：", file=sys.stderr)
+    print("      py -3.10 -m venv .venv", file=sys.stderr)
+    print("      .\\.venv\\Scripts\\python.exe -m pip install -e \".[dev]\"", file=sys.stderr)
+    print("      .\\.venv\\Scripts\\python.exe packaging\\build.py", file=sys.stderr)
+    raise SystemExit(1)
 
 
 def project_version() -> str:
@@ -154,6 +257,61 @@ def resign_ad_hoc(bundle: Path) -> None:
     )
 
 
+def installer_name(version: str) -> str:
+    """Windows 安装包的文件名（与 installer.iss 里的 OutputBaseFilename 保持一致）。"""
+    return f"Snipdraw-{version}-windows-x64-setup.exe"
+
+
+def iscc_candidates() -> list[Path]:
+    """Inno Setup 编译器可能的位置：winget 默认装到当前用户，也兼容全机安装。"""
+    local_appdata = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local")))
+    return [
+        local_appdata / "Programs" / "Inno Setup 6" / "ISCC.exe",
+        Path(r"C:\Program Files (x86)\Inno Setup 6\ISCC.exe"),
+        Path(r"C:\Program Files\Inno Setup 6\ISCC.exe"),
+    ]
+
+
+def find_iscc() -> Path | None:
+    for candidate in iscc_candidates():
+        if candidate.exists():
+            return candidate
+    found = shutil.which("ISCC")
+    return Path(found) if found else None
+
+
+def installer_command(iscc: Path, version: str) -> list[str]:
+    return [
+        str(iscc),
+        f"/DAppVersion={version}",
+        f"/DSourceDir={DIST_DIR / 'Snipdraw'}",
+        f"/DOutputDir={RELEASE_DIR}",
+        "/Qp",
+        str(INSTALLER_ISS),
+    ]
+
+
+def package_installer() -> Path | None:
+    """用 Inno Setup 把 dist/Snipdraw 打成 setup.exe；非 Windows 或缺 ISCC 时返回 None。"""
+    if sys.platform != "win32":
+        return None
+    iscc = find_iscc()
+    if iscc is None:
+        print(
+            "[installer] 没找到 Inno Setup（ISCC.exe），本次只出 zip。"
+            "安装它：winget install JRSoftware.InnoSetup",
+            file=sys.stderr,
+        )
+        return None
+    version = project_version()
+    RELEASE_DIR.mkdir(parents=True, exist_ok=True)
+    target = RELEASE_DIR / installer_name(version)
+    if target.exists():
+        target.unlink()
+    subprocess.run(installer_command(iscc, version), check=True, cwd=ROOT)
+    return target if target.exists() else None
+
+
 def build() -> None:
     shutil.rmtree(BUILD_DIR, ignore_errors=True)
     shutil.rmtree(DIST_DIR, ignore_errors=True)
@@ -249,7 +407,9 @@ def main() -> int:
     parser.add_argument("--only-build", action="store_true", help="只构建，不打压缩包")
     parser.add_argument("--only-package", action="store_true", help="跳过构建，只重新打包")
     parser.add_argument("--no-dmg", action="store_true", help="macOS 只出 zip，不出 dmg")
+    parser.add_argument("--no-installer", action="store_true", help="Windows 只出 zip，不出 setup.exe")
     args = parser.parse_args()
+    ensure_environment()
 
     if args.only_package:
         archive = package()
@@ -258,6 +418,10 @@ def main() -> int:
             dmg = package_dmg()
             if dmg is not None:
                 print(f"[size] {dmg.name}: {du_mb(dmg):.1f} MB（安装包）")
+        if not args.no_installer:
+            setup = package_installer()
+            if setup is not None:
+                print(f"[size] {setup.name}: {du_mb(setup):.1f} MB（Windows 安装包）")
         return 0
 
     build()
@@ -276,7 +440,7 @@ def main() -> int:
         resign_ad_hoc(bundle)
         print(f"[shrink] strip {count} 个 Mach-O：-{freed:.1f} MB；重签 ad-hoc 完成")
     else:
-        print("[shrink] 非 macOS，跳过 strip（Windows/Linux 由 CI 构建）")
+        print("[shrink] 非 macOS，跳过 strip / 重签")
 
     if sys.platform == "darwin" and signing_identity() == "-":
         print(
@@ -297,6 +461,11 @@ def main() -> int:
         dmg = package_dmg()
         if dmg is not None:
             print(f"[size] {dmg.name}: {du_mb(dmg):.1f} MB（安装包）")
+
+    if not args.no_installer:
+        setup = package_installer()
+        if setup is not None:
+            print(f"[size] {setup.name}: {du_mb(setup):.1f} MB（Windows 安装包）")
     return 0
 
 

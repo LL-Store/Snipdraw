@@ -143,7 +143,12 @@ class SnipdrawApp(QObject):
     # ---------------- 截图流程 ----------------
 
     def capture_now(self, delay: int = 0) -> None:
-        if self.should_exit or self.overlay.active:
+        if self.should_exit:
+            return
+        if self.overlay.active:
+            # 已经在截图/标注：再按热键只把窗口顶上来，不开第二份 overlay。
+            # 静默忽略会让用户以为程序卡死，然后去按 Esc。
+            self.overlay.focus_active()
             return
 
         if not self._ensure_screen_permission():

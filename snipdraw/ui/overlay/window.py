@@ -88,6 +88,7 @@ class OverlayWindow(QWidget):
         self._toolbar: Toolbar | None = None
         self._text_edit: QLineEdit | None = None
         self._text_pos: QPointF | None = None
+        self._done = False
 
     # ---------------- 位置与状态 ----------------
 
@@ -118,9 +119,21 @@ class OverlayWindow(QWidget):
         self._selected = True
         self._ensure_toolbar()
         self._place_toolbar()
-        self.setCursor(Qt.CursorShape.CrossCursor)
+        self._refresh_cursor()
         self.update()
         self.setFocus()
+
+    def _refresh_cursor(self) -> None:
+        """十字只属于框选；进标注态还给箭头，文字工具用 I 形。
+
+        Windows 上编辑器一直停在十字，就是因为这里之前把 CrossCursor 写死在
+        enter_annotating / toolChanged 里，从来没有恢复过。
+        """
+        if self._mode == Mode.SELECTING:
+            self.setCursor(Qt.CursorShape.CrossCursor)
+            return
+        tool = self._toolbar.current_tool() if self._toolbar is not None else ""
+        self.setCursor(Qt.CursorShape.IBeamCursor if tool == "text" else Qt.CursorShape.ArrowCursor)
 
     @property
     def mode(self) -> Mode:
@@ -132,7 +145,7 @@ class OverlayWindow(QWidget):
         if self._toolbar is not None:
             return
         toolbar = Toolbar(self.style.color, self)
-        toolbar.toolChanged.connect(lambda key: self.setCursor(Qt.CursorShape.CrossCursor))
+        toolbar.toolChanged.connect(lambda key: self._refresh_cursor())
         toolbar.styleChanged.connect(self._sync_style)
         toolbar.undoRequested.connect(self.model.undo)
         toolbar.redoRequested.connect(self.model.redo)
@@ -496,6 +509,9 @@ class OverlayWindow(QWidget):
         super().keyPressEvent(event)
 
     def _abort(self) -> None:
+        if self._done:
+            return
+        self._done = True
         self._close_text_edit(commit=False)
         self.canceled.emit()
 
@@ -508,15 +524,20 @@ class OverlayWindow(QWidget):
         out = QImage(rect.width(), rect.height(), QImage.Format.Format_ARGB32_Premultiplied)
         out.fill(Qt.GlobalColor.transparent)
         painter = QPainter(out)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        painter.drawImage(QRect(0, 0, rect.width(), rect.height()), self.frame.image, rect)
-        painter.translate(-rect.x(), -rect.y())
-        for shape in self.model.shapes:
-            shape.paint(painter, self.frame.image, self.frame.scale_x)
-        painter.end()
+        try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            painter.drawImage(QRect(0, 0, rect.width(), rect.height()), self.frame.image, rect)
+            painter.translate(-rect.x(), -rect.y())
+            for shape in self.model.shapes:
+                shape.paint(painter, self.frame.image, self.frame.scale_x)
+        finally:
+            painter.end()
         return out
 
     def _emit_output(self, action: str) -> None:
+        if self._done:
+            return
+        self._done = True
         self._close_text_edit(commit=True)
         image = self.composed()
         # 贴图要知道“这张图原来在屏幕的哪个位置、属于什么缩放比例”，
@@ -533,10 +554,21 @@ class OverlayWindow(QWidget):
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
+        try:
+            self._paint_scene(painter)
+        finally:
+            painter.end()
+
+    def _paint_scene(self, painter: QPainter) -> None:
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.drawImage(self.rect(), self.frame.image)
 
-        sel_widget = self._to_widget(self._selection_phys) if self._selection_phys else None
+        # 只按 is None 判断：鼠标刚按下时选区是零尺寸的 QRectF，在 PySide 里是 falsy，
+        # 用 if self._selection_phys 会把 None 传给 setClipRect，paintEvent 抛 TypeError
+        # 后 painter 没 end，Qt 销毁绘图设备时直接 abort（0xc0000409）
+        sel_widget = None
+        if self._selection_phys is not None:
+            sel_widget = self._to_widget(self._selection_phys)
 
         if self._selection_phys is not None:
             painter.save()
@@ -559,7 +591,6 @@ class OverlayWindow(QWidget):
                 self._paint_badge_size(painter, sel_widget, self._selection_phys or QRectF())
             if self._cursor_phys is not None:
                 self._paint_magnifier(painter, self._cursor_phys)
-        painter.end()
 
     def _paint_dim(self, painter: QPainter, sel_widget: QRectF | None) -> None:
         region = QRegion(self.rect())

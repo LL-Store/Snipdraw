@@ -1,5 +1,5 @@
 # Snipdraw
-跨平台截图标注工具，交互范式借鉴 Snipaste。基于 Python 3.11 + PySide6（Qt 6），
+跨平台截图标注工具，交互范式借鉴 Snipaste。基于 Python 3.10+（3.10–3.13）与 PySide6（Qt 6），
 后期可按 `core/` 的边界平移到 C++ Qt。支持 Windows、macOS 与 Linux X11。
 
 <p>
@@ -57,9 +57,18 @@
 只需要 Python，不需要 Qt SDK、Qt Creator 或 CMake：
 
 ```bash
-python3.11 -m venv .venv          # PySide6 的 wheel 对 3.14 支持滞后，别用最新版
-source .venv/bin/activate
+python3.11 -m venv .venv          # 3.10–3.13 都行；PySide6 的 wheel 对 3.14 支持滞后，别用最新版
+source .venv/bin/activate         # Windows: .venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
+```
+
+Windows 上有个坑：`python` 可能落到应用商店版 3.9（`WindowsApps\python.exe`），
+它既没 PyInstaller 也没 PySide6，版本还低于 3.10，拿它打包只会得到一句
+`CalledProcessError ... returned non-zero exit status 1`。先建对解释器的环境：
+
+```powershell
+py -3.10 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 ```
 
 ## 运行
@@ -96,28 +105,52 @@ python -m pytest -q                           # 坐标换算与配置校验单�
 `demo` 会预置选区、画好 6 个样例图元并进入标注态，然后拍屏——用来肉眼核对渲染。
 `tests/` 里还有一层 offscreen 交互测试：直接给窗口发鼠标事件，覆盖「拖框→进标注→画图元→出图」。
 
+`pytest` 在 `.[dev]` 里固定在 `>=7,<9`：9.x 在 Python 3.10 上会直接
+`INTERNALERROR: AttributeError: 'NodeId' object has no attribute '_str_cache'`。
+
+Windows 上屏幕名形如 `|DELL E1715S`，`|` 在文件名里非法，`selftest` 会把它替换成 `_`
+再落盘（同时检查 `QImage.save` 的返回值）。打包后的 exe 是 GUI 子系统、print 不显示，
+所以验证以「退出码 0 + 目录里真有 PNG」为准。
+
 ## 打包
 
 体积优先，只保留真正用到的 Qt 模块与插件：
 
 ```bash
-python packaging/build.py         # 构建 + 打压缩包 + 打印体积
+python packaging/build.py                 # 构建 + 打压缩包 +（Windows）出安装包 + 打印体积
 ```
 
 打包需要 PyInstaller，已包含在开发依赖 `.[dev]` 中；首次构建前请按上方「开发环境」完成安装。
+Windows 上直接 `python packaging/build.py` 也能跑：脚本会先预检解释器，发现缺 PyInstaller /
+PySide6 或版本不对时自动切到项目里的 `.venv` 重跑；没有可用 venv 才退出并给出现成命令。
+
+Windows 的 setup.exe 由 Inno Setup 编译（`packaging/installer.iss`），需要先装编译器：
+`winget install JRSoftware.InnoSetup`。没装时只会跳过安装包、照常出 zip；`--no-installer`
+可以主动跳过。安装包装到 `%LOCALAPPDATA%\Programs\Snipdraw`（当前用户，不弹 UAC），
+带开始菜单快捷方式和卸载项，卸载不删用户配置。
 
 | 产物 | 体积 |
 |---|---|
 | `dist/Snipdraw.app`（macOS arm64，解压后） | 53.9 MB |
 | `release/Snipdraw-0.1.0-macos-arm64.dmg`（安装包） | 20.4 MB |
 | `release/Snipdraw-0.1.0-macos-arm64.zip`（压缩分发） | 19.7 MB |
+| `dist/Snipdraw/`（Windows x64，解压后） | 98.6 MB |
+| `release/Snipdraw-0.1.0-windows-x64-setup.exe`（安装包） | 26.9 MB |
+| `release/Snipdraw-0.1.0-windows-amd64.zip`（解压即用） | 38.5 MB |
+
+Windows/Linux 不走 strip 与重签，体积全靠 spec 里的排除项。注意 Windows 上 `EXCLUDES`
+只管到 Python 模块，DLL 层面没有过滤：`Qt6Quick.dll` / `Qt6Qml.dll`（约 11 MB，实测未加载）
+和 `opengl32sw.dll`（19.7 MB，软件 OpenGL 兜底）都还在包里。实测数据与平台差异见
+[`packaging/README.md`](packaging/README.md)。
 
 想再小一点可以关掉 macOS 的 QtMultimedia 兜底后端（51 MB / 18 MB）：
 `SNIPDRAW_NO_MULTIMEDIA=1 python packaging/build.py`，代价是只保留 `grabWindow` 一条截屏路径。
 
-裁剪策略、三个踩过的坑（`Python.framework` 被误杀 / QtDBus 依赖 / `ctypes.macholib`）
-以及各平台差异都记在 [`packaging/README.md`](packaging/README.md)。
-打包在本机运行；要构建其他平台的产物，请在对应系统上运行同一命令。
+裁剪策略、踩过的坑（`Python.framework` 被误杀 / QtDBus 依赖 / `ctypes.macholib` /
+Windows 用错解释器 / `|` 文件名导致存图静默失败）以及各平台差异都记在
+[`packaging/README.md`](packaging/README.md)。
+打包在本机运行；要构建其他平台的产物，请在对应系统上运行同一命令。仓库里没有 CI
+workflow，产物都是在对应系统上本地构建的。
 
 ## macOS 屏幕录制权限
 

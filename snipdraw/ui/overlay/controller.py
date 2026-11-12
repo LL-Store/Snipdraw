@@ -23,32 +23,51 @@ class OverlayController(QObject):
     ) -> None:
         super().__init__(parent)
         self._windows: list[OverlayWindow] = []
+        self._busy = False
         self._color = QColor(color or "#ff3b30")
         self._width = float(width)
         self._font_size = int(font_size)
 
     @property
     def active(self) -> bool:
-        return bool(self._windows)
+        # 取景过程中也算 active：否则第二次热键会在 _windows 还是空的时候重入，
+        # 结果叠出两个全屏 overlay（用户看到的是"卡住"，Esc 又要删两遍）
+        return self._busy or bool(self._windows)
 
     def start(self) -> bool:
-        self.close_all()
-        service = CaptureService()
-        try:
-            frames = service.capture_all()
-        except CaptureError as error:
-            self.failed.emit(str(error))
+        if self._busy or self._windows:
             return False
+        self._busy = True
+        try:
+            self.close_all()
+            service = CaptureService()
+            try:
+                frames = service.capture_all()
+            except CaptureError as error:
+                self.failed.emit(str(error))
+                return False
 
-        for frame in frames:
-            window = OverlayWindow(frame, self._color, self._width, self._font_size)
-            window.finished.connect(self._on_finished)
-            window.canceled.connect(self._on_canceled)
-            self._windows.append(window)
+            for frame in frames:
+                window = OverlayWindow(frame, self._color, self._width, self._font_size)
+                window.finished.connect(self._on_finished)
+                window.canceled.connect(self._on_canceled)
+                self._windows.append(window)
 
-        # 必须全部建好再统一显示，避免第一块屏的 overlay 被第二块屏的截屏拍到
+            # 必须全部建好再统一显示，避免第一块屏的 overlay 被第二块屏的截屏拍到
+            for window in self._windows:
+                window.show_on_screen()
+            return True
+        finally:
+            self._busy = False
+
+    def focus_active(self) -> bool:
+        """已在截图时又按了热键：把现有 overlay 顶上来，别让用户以为程序卡死。"""
+        if not self._windows:
+            return False
         for window in self._windows:
-            window.show_on_screen()
+            window.show()
+            window.raise_()
+            window.activateWindow()
         return True
 
     def close_all(self) -> None:

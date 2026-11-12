@@ -298,7 +298,7 @@
       <span>macOS · arm64</span>
       <span>Windows</span>
       <span>Linux（X11）</span>
-      <span>53.9 MB</span>
+      <span>macOS 53.9 MB · Windows 98.6 MB</span>
     </div>
   </div>
 
@@ -444,8 +444,8 @@
           <div class="logo-db" style="background: rgba(58,130,216,.14); color: var(--blue);">W</div>
           <h3>Windows</h3>
         </div>
-        <p>热键走 RegisterHotKey，打包走 EXE 并带 .ico 图标；spec 与构建脚本按平台分支，CI 矩阵里出产物。</p>
-        <div class="tag">CI 构建</div>
+        <p>热键走 RegisterHotKey，打包走 EXE 并带 .ico 图标；spec 与构建脚本按平台分支，在 Windows 上跑 <code>packaging/build.py</code> 出三样东西：目录（98.6 MB）、zip（38.5 MB）和 Inno Setup 安装包（26.9 MB，装到当前用户目录，免管理员）。</p>
+        <div class="tag">实机验证 · x64 · setup 26.9 MB</div>
       </div>
       <div class="plat-card reveal">
         <div class="top">
@@ -471,15 +471,15 @@
     <div class="metrics">
       <div class="metric reveal">
         <div class="v">53.9 MB</div>
-        <div class="k">解压后的 .app（dmg 20.4 MB / zip 19.7 MB）</div>
+        <div class="k">解压后的 .app（dmg 20.4 MB / zip 19.7 MB）；Windows 目录 98.6 MB / 安装包 26.9 MB / zip 38.5 MB</div>
       </div>
       <div class="metric reveal">
         <div class="v">0.38 s</div>
         <div class="k">启动到截完一张图（热启动实测）</div>
       </div>
       <div class="metric reveal">
-        <div class="v">35</div>
-        <div class="k">自动化测试：几何、合成、overlay 交互、贴图、热键回退</div>
+        <div class="v">67</div>
+        <div class="k">自动化测试：几何、合成、overlay 交互与绘制健壮性、截图重入守卫、贴图、热键回退、自测存图、打包环境预检与安装包命名</div>
       </div>
     </div>
 
@@ -491,7 +491,6 @@
       <span class="chip">QUndoStack</span>
       <span class="chip">PyInstaller</span>
       <span class="chip">pytest</span>
-      <span class="chip">GitHub Actions</span>
       <span class="chip">AppKit via ctypes</span>
       <span class="chip">XGrabKey / RegisterHotKey</span>
     </div>
@@ -503,7 +502,7 @@
   <div class="wrap">
     <div class="box reveal">
       <h2>开始使用 Snipdraw</h2>
-      <p>macOS 下载 <code>.dmg</code>（20.4 MB）：双击挂载，把 Snipdraw 拖进 Applications 就装好了；Windows / Linux 产物由 CI 构建，zip / tar.gz 解压即用。</p>
+      <p>macOS 下载 <code>.dmg</code>（20.4 MB）：双击挂载，把 Snipdraw 拖进 Applications 就装好了；Windows 有两种装法——<code>setup.exe</code>（26.9 MB，双击装到当前用户目录，免管理员，带开始菜单快捷方式）或 <code>.zip</code>（38.5 MB）解压即用；Linux 产物需在 Linux 上用 <code>packaging/build.py</code> 自行构建。</p>
       <div class="actions">
         <a class="btn btn-primary" href="https://github.com/LL-Store/Snipdraw/releases" target="_blank" rel="noopener">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
