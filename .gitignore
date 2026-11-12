@@ -1,0 +1,15 @@
+.git
+.DS_Store
+.project
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+release/
+*.spec
+!packaging/snipdraw.spec
+.pytest_cache/

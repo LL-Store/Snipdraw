@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "snipdraw"
+version = "0.1.0"
+description = "跨平台截图标注工具，借鉴 Snipaste 的交互范式"
+readme = "README.md"
+requires-python = ">=3.10,<3.14"
+license = { text = "MIT" }
+authors = [{ name = "zxl20070701" }]
+dependencies = [
+  # 只装 Essentials + Addons；元包 pyside6 会额外拖进 WebEngine（250MB）和 PDF，本项目用不到
+  "PySide6-Essentials>=6.6",
+  "PySide6-Addons>=6.6",  # QtMultimedia 在这里，QScreenCapture 依赖它
+  # Linux X11 全局热键；其它平台不装
+  "python-xlib>=0.33; sys_platform == 'linux'",
+]
+
+keywords = ["snipdraw", "screenshot", "annotation", "snipaste", "pyside6", "qt6"]
+
+[project.urls]
+Homepage = "https://github.com/LL-Store/Snipdraw#readme"
+Repository = "https://github.com/LL-Store/Snipdraw"
+Issues = "https://github.com/LL-Store/Snipdraw/issues"
+
+[project.scripts]
+snipdraw = "snipdraw.__main__:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "pyinstaller>=6.22.3"]
+
+[tool.setuptools.packages.find]
+include = ["snipdraw*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
