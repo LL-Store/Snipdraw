@@ -12,12 +12,53 @@
     <a href="https://github.com/LL-Store/Snipdraw">
         <img src="https://img.shields.io/github/forks/LL-Store/Snipdraw" alt="forks">
     </a>
+    <img src="https://img.shields.io/badge/python-3.10%20%7C%203.13-3776ab" alt="python">
+    <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20X11-4a4a4a" alt="platform">
+    <a href="LICENSE">
+        <img src="https://img.shields.io/badge/license-MIT-97ca00" alt="license">
+    </a>
 </p>
+
+<p align="center">
+    <img src="docs/screenshots/overlay.png" alt="框选后进入标注态：矩形、箭头、高亮、序号与文字都能直接画在截图上" width="100%">
+</p>
+
+<p align="center">
+    <sub>框选即进标注态：矩形 / 箭头 / 高亮 / 序号 / 文字都画在物理像素坐标上，工具栏随选区浮动，不会被截进图里。</sub>
+</p>
+
+## 它怎么工作
+
+| 能力 | 说明 |
+| --- | --- |
+| 一个热键走完全程 | 截屏 → 框选 → 标注 → 复制 / 保存 / 贴图，不弹多余窗口 |
+| 一次框选，三种去处 | 回车进剪贴板、`Ctrl+S` 落盘、工具栏「贴图」原地钉住 |
+| 坐标按物理像素存 | 线宽、字号按 `物理/逻辑` 比例放大，Retina 与 4K 下与导出 PNG 一致 |
+| 不依赖 Qt SDK | `pip install -e .` 即跑，不需要 Qt Creator / CMake；`core/` 可平移到 C++ Qt |
+| 有回归网兜底 | 75 条自动化测试 + `selftest`（查黑图、查 `逻辑尺寸 × dpr`）+ 打包体积守护 |
+
+```mermaid
+flowchart LR
+    A["全局热键 F1<br/>失败回退 Ctrl+Alt+A"] --> B["逐屏截屏<br/>逻辑尺寸 × dpr"]
+    B --> C["全屏 overlay<br/>框选"]
+    C --> D["标注态<br/>矩形/箭头/画笔/文字/马赛克/序号"]
+    D --> E{"输出"}
+    E --> F["剪贴板"]
+    E --> G["保存 PNG/JPG"]
+    E --> H["贴图钉在屏幕上"]
+```
+
+整条链路上没有常驻的后台线程：热键由原生 `RegisterHotKey` / `XGrabKey` 注册，
+按下后走 Qt 事件循环同步取景，出图、贴图、写盘都在主线程完成后回到托盘。
 
 ## 贴图
 
 标注工具栏上的「贴图」会把当前结果钉在屏幕上，位置和尺寸按原选区还原——
 贴出来的图跟被你框住的那块区域长得一模一样，不会跑到屏幕中间。
+
+<p align="center">
+    <img src="docs/screenshots/pin.png" alt="贴图：框出的表格行被原位置钉在屏幕上，可缩放、调透明度" width="88%">
+</p>
 
 | 操作 | 效果 |
 | --- | --- |
@@ -36,6 +77,10 @@
 ## 标注
 
 框选后自动进入标注态，选区下方浮出工具栏（它是 overlay 的子控件，随选区移动、不会被截进图里）。
+
+<p align="center">
+    <img src="docs/screenshots/tools.png" alt="标注态：工具栏贴着选区下沿，矩形/箭头/文字叠加在截图上" width="88%">
+</p>
 
 | 工具 | 快捷键 | 说明 |
 | --- | --- | --- |
@@ -92,25 +137,50 @@ python -m snipdraw                # 进入托盘常驻，按热键截图
 设置有两个入口：托盘菜单「设置…」，或 `python -m snipdraw settings`（已有实例在跑时
 这条指令会转发给它并弹窗，托盘图标被别的图标挤住时用这个）。
 
+<p align="center">
+    <img src="docs/screenshots/settings.png" alt="设置页：热键、屏幕录制授权、默认延时、保存目录与格式、自动复制/自动保存、开机自启动" width="46%">
+</p>
+
 ## 自测命令
 
 ```bash
 python -m snipdraw selftest --out /tmp/snip   # 每块屏各抓一张，核对逻辑尺寸×缩放
 python -m snipdraw demo --out /tmp/ov.png     # 摆一个预置选区，拍下 overlay 渲染结果
 python -m snipdraw oneshot --out /tmp/one.png # 无交互验证存盘+剪贴板
-python -m pytest -q                           # 坐标换算与配置校验单测
 ```
 
 `selftest` 是改截屏代码后必跑的：它同时验证「逻辑尺寸 × dpr = 实际像素」和是否截到黑图。
 `demo` 会预置选区、画好 6 个样例图元并进入标注态，然后拍屏——用来肉眼核对渲染。
-`tests/` 里还有一层 offscreen 交互测试：直接给窗口发鼠标事件，覆盖「拖框→进标注→画图元→出图」。
-
-`pytest` 在 `.[dev]` 里固定在 `>=7,<9`：9.x 在 Python 3.10 上会直接
-`INTERNALERROR: AttributeError: 'NodeId' object has no attribute '_str_cache'`。
 
 Windows 上屏幕名形如 `|DELL E1715S`，`|` 在文件名里非法，`selftest` 会把它替换成 `_`
 再落盘（同时检查 `QImage.save` 的返回值）。打包后的 exe 是 GUI 子系统、print 不显示，
 所以验证以「退出码 0 + 目录里真有 PNG」为准。
+
+## 运行测试
+
+`tests/` 下是 pytest 用例，pytest 已随 `.[dev]` 安装；在项目根目录运行：
+
+```bash
+python -m pytest -q                                                        # 全量
+python -m pytest -v                                                        # 列出每条用例名与耗时
+python -m pytest tests/test_geometry.py -q                                # 只跑一个文件
+python -m pytest tests/test_overlay_guard.py::test_cancel_emits_only_once -q  # 只跑一条用例
+python -m pytest -k geometry -q                                           # 按文件名 / 函数名关键字过滤
+```
+
+用例分三层：
+
+| 层 | 文件 | 说明 |
+| --- | --- | --- |
+| 纯逻辑 | `test_geometry` / `test_compose` / `test_pin` / `test_hotkey` / `test_permission` / `test_autostart` / `test_build_environment` / `test_selftest` | 坐标换算、配置、出图像素、贴图与权限闸门等，手造 Frame，不依赖真实屏幕 |
+| offscreen 交互 | `test_overlay_interaction` / `test_overlay_guard` / `test_overlay_paint` / `test_overlay_cursor` | `QT_QPA_PLATFORM=offscreen`，直接给窗口发鼠标事件，覆盖「拖框→进标注→画图元→出图」与重入幂等 |
+| 平台 / 打包专属 | `test_build_installer`（Windows Inno Setup）；`test_hotkey` 的 macOS 分支 | 按系统分支生效，非对应平台会跳过或断言不适用 |
+
+两点注意：
+
+- macOS 上若没授予「屏幕录制」权限，offscreen 层里走真实截屏的用例可能在 `capture_all()` 抛 `CaptureError`；先按后文「macOS 屏幕录制权限」授权，或只跑纯逻辑层。
+- `pytest` 在 `.[dev]` 里固定在 `>=7,<9`：9.x 在 Python 3.10 上会直接
+  `INTERNALERROR: AttributeError: 'NodeId' object has no attribute '_str_cache'`。
 
 ## 打包
 

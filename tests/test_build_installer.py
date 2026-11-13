@@ -33,7 +33,7 @@ def test_installer_command_passes_version_and_sources():
 
 
 def test_iscc_candidates_include_per_user_install():
-    paths = [path.as_posix() for path in build.iscc_candidates()]
+    paths = [path.as_posix().replace("\\", "/") for path in build.iscc_candidates()]
     # winget 默认装到当前用户目录，这里必须能找到
     assert any(path.endswith("Inno Setup 6/ISCC.exe") for path in paths)
     assert any(path.startswith("C:/Program Files") for path in paths)

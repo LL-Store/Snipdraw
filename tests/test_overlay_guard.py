@@ -36,7 +36,6 @@ def make_frame() -> Frame:
 def test_second_start_during_capture_is_ignored(app, monkeypatch):
     """取景过程中再按一次 F1：不允许再来一轮 start()，否则会叠两个 overlay。"""
     controller = OverlayController()
-    original = CaptureService.capture_all
     calls: list[int] = []
     second_results: list[bool] = []
 
@@ -44,7 +43,7 @@ def test_second_start_during_capture_is_ignored(app, monkeypatch):
         calls.append(1)
         if len(calls) == 1:
             second_results.append(controller.start())   # 模拟热键在取景时重入
-        return original(self)
+        return [make_frame()]
 
     monkeypatch.setattr(CaptureService, "capture_all", capture_then_reenter)
 

@@ -80,6 +80,20 @@ def test_settings_from_dict_ignores_unknown_and_keeps_extra():
 def test_settings_empty_hotkey_falls_back():
     assert Settings(hotkey="   ").normalized().hotkey == "F1"
 
+
+def test_settings_theme_clamps():
+    assert Settings(theme="neon").normalized().theme == "system"
+    assert Settings(theme="dark").normalized().theme == "dark"
+    assert Settings(theme="light").normalized().theme == "light"
+
+
+def test_settings_autostart_default_on_and_preserved():
+    assert Settings().start_at_login is True
+    off = Settings(start_at_login=False).normalized()
+    assert off.start_at_login is False
+    on = Settings(start_at_login=False, extra={}).normalized()
+    assert on.start_at_login is False
+
 def test_settings_hotkey_can_be_disabled():
     settings = Settings.from_dict({"hotkey_enabled": False})
     assert settings.hotkey_enabled is False

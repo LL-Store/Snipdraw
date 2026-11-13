@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 VALID_FORMATS = ("png", "jpg")
+VALID_THEMES = ("system", "light", "dark")
 
 
 @dataclass
@@ -29,7 +30,10 @@ class Settings:
     auto_copy: bool = True
     auto_save: bool = True
     play_sound: bool = False
-    start_at_login: bool = False
+    start_at_login: bool = True
+
+    # 外观：跟随系统 / 浅色 / 深色
+    theme: str = "system"
 
     # 贴图
     pin_limit: int = 20          # 贴图不跨重启恢复（v1 有意不做持久化）
@@ -46,6 +50,8 @@ class Settings:
     def normalized(self) -> "Settings":
         if self.image_format not in VALID_FORMATS:
             self.image_format = "png"
+        if self.theme not in VALID_THEMES:
+            self.theme = "system"
         self.jpeg_quality = max(1, min(100, int(self.jpeg_quality)))
         self.delay_seconds = max(0, min(30, int(self.delay_seconds)))
         self.pin_limit = max(1, min(100, int(self.pin_limit)))

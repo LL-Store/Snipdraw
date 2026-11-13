@@ -18,6 +18,7 @@ from .core import storage
 from .core.capture import Frame
 from .core.settings import Settings
 from .core.single_instance import SingleInstance
+from .platform import autostart
 from .platform.hotkey import HotkeyManager
 from .ui.icon import app_icon
 from .ui.overlay.controller import OverlayController
@@ -41,6 +42,9 @@ class SnipdrawApp(QObject):
         self.settings: Settings = storage.load()
         self.should_exit = False
         self._open_settings_on_start = open_settings
+
+        # 启动时按设置对齐一次自启动状态：默认开启，首次运行就注册。
+        autostart.set_enabled(self.settings.start_at_login)
 
         # 单实例：已有实例就转发指令后退出，避免两个进程抢同一个热键
         self.instance = SingleInstance()
@@ -239,6 +243,7 @@ class SnipdrawApp(QObject):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.settings = dialog.result_settings()
             storage.save(self.settings)
+            autostart.set_enabled(self.settings.start_at_login)
             self._rebind_hotkey()
 
     def open_save_dir(self) -> None:
