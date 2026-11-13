@@ -140,6 +140,7 @@ class PenShape(Shape):
         if not self.points:
             return
         painter.setPen(self._pen(unit))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
         if len(self.points) == 1:
             painter.drawPoint(self.points[0])
             return

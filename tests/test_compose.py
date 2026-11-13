@@ -13,7 +13,15 @@ from PySide6.QtWidgets import QApplication
 
 from snipdraw.core.capture import Frame
 from snipdraw.core.geometry import ScreenGeometry
-from snipdraw.ui.overlay.shapes import BadgeShape, EllipseShape, MosaicShape, RectShape, Style, TextShape
+from snipdraw.ui.overlay.shapes import (
+    BadgeShape,
+    EllipseShape,
+    MosaicShape,
+    PenShape,
+    RectShape,
+    Style,
+    TextShape,
+)
 
 
 @pytest.fixture(scope="module")
@@ -77,6 +85,25 @@ def test_badge_and_text_do_not_crash(app):
     window.model.add(EllipseShape(QRectF(130, 100, 90, 70), Style(QColor("#ffff00"), 3.0, 16)))
     image = window.composed()
     assert image.width() == 200 and image.height() == 150
+    window.deleteLater()
+
+
+def test_badge_does_not_fill_following_pen_stroke(app):
+    from snipdraw.ui.overlay.window import OverlayWindow
+
+    window = OverlayWindow(make_frame())
+    window.set_preview(QRectF(0, 0, 400, 300), QPointF(150, 100))
+    style = Style(QColor("#ff0000"), 3.0, 20)
+    window.model.add(BadgeShape(QPointF(300, 200), 1, style))
+    window.model.add(
+        PenShape(
+            [QPointF(100, 100), QPointF(160, 100), QPointF(100, 160)],
+            style,
+        )
+    )
+
+    image = window.composed()
+    assert image.pixelColor(110, 110).name() == "#204060"
     window.deleteLater()
 
 
