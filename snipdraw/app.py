@@ -33,7 +33,7 @@ class SnipdrawApp(QObject):
         self.qt = QApplication(argv)
         self.qt.setApplicationName("Snipdraw")
         self.qt.setApplicationDisplayName("Snipdraw")
-        self.qt.setOrganizationName("LL-Store")
+        self.qt.setOrganizationName("zxl20070701")
         self.qt.setApplicationVersion(__version__)
         self.qt.setWindowIcon(app_icon())
         # 托盘常驻应用：关掉最后一个窗口不等于退出

@@ -13,7 +13,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-LABEL = "com.llstore.snipdraw"
+LABEL = "io.github.zxl20070701.snipdraw"
 APP_NAME = "Snipdraw"
 
 

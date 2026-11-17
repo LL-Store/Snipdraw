@@ -7,7 +7,7 @@
 
 #define AppName "Snipdraw"
 #define AppExeName "Snipdraw.exe"
-#define AppPublisher "LL-Store"
+#define AppPublisher "zxl20070701"
 #define AppUrl "https://github.com/LL-Store/Snipdraw"
 
 #ifndef AppVersion
